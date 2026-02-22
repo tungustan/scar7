@@ -1,103 +1,180 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Short-form Drama Showcase</title>
-    <script src="https://assets.mediadelivery.net/playerjs/playerjs-latest.min.js"></script>
-    <style>
-        :root { --main-red: #ff3e3e; --bg: #000000; --sidebar: #121212; }
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: var(--bg); color: white; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; }
-        
-        /* 전체 구조 */
-        .container { display: flex; flex-direction: column; height: 100vh; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>숏폼 드라마 플레이어</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<style>
+html, body {
+  margin:0; padding:0; height:100%; background:black; font-family:-apple-system,BlinkMacSystemFont,Arial;
+}
+#app { width:100vw; height:100vh; overflow:auto; }
+#archive { padding:15px; }
+.archive-title { color:white; text-align:center; font-size:20px; font-weight:bold; margin-bottom:15px; }
+.grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+.card { width:100%; aspect-ratio:4/3; border-radius:10px; background:#111; background-size:cover; background-position:center; cursor:pointer; transition:transform .2s; }
+.card:active { transform:scale(.95); }
 
-        /* 플레이어 영역: 모바일에서 꽉 차게 */
-        .viewer { flex: 1; display: flex; align-items: center; justify-content: center; background: #000; position: relative; }
-        .video-box { width: 100%; height: 100%; max-width: 500px; aspect-ratio: 9/16; position: relative; }
-        iframe { width: 100%; height: 100%; border: none; }
+#playerScreen { position:fixed; inset:0; background:black; display:none; z-index:100; }
+video { width:100%; height:100%; object-fit:contain; background:black; }
 
-        /* 자동재생 알림 라벨 */
-        #auto-next-badge { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(255, 62, 62, 0.8); padding: 8px 15px; border-radius: 20px; font-size: 12px; z-index: 10; display: none; }
+.back { position:absolute; top:env(safe-area-inset-top,20px); left:20px; color:white; font-weight:bold; cursor:pointer; z-index:10; }
 
-        /* 하단 에피소드 리스트 (모바일용 가로 스크롤) */
-        .sidebar { height: 150px; background: var(--sidebar); border-top: 1px solid #222; display: flex; flex-direction: column; flex-shrink: 0; }
-        .header { padding: 12px 20px; border-bottom: 1px solid #222; }
-        .header h1 { font-size: 16px; margin: 0; color: var(--main-red); }
-        .header p { font-size: 11px; color: #888; margin: 4px 0 0 0; }
+.controls { position:absolute; bottom:env(safe-area-inset-bottom,20px); left:0; width:100%; padding:15px 10px 25px 10px; box-sizing:border-box; background:linear-gradient(to top, rgba(0,0,0,.9), transparent); opacity:1; transition:opacity .3s; }
+.controls.hide { opacity:0; pointer-events:none; }
+.time-display { color:white; font-size:12px; display:flex; justify-content:space-between; margin-bottom:5px; }
+input[type=range] { width:100%; height:3px; -webkit-appearance:none; background:rgba(255,255,255,.3); margin-bottom:10px; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:#e50914; }
 
-        .list { display: flex; overflow-x: auto; padding: 10px; gap: 12px; -webkit-overflow-scrolling: touch; }
-        .item { min-width: 100px; display: flex; flex-direction: column; gap: 8px; cursor: pointer; transition: 0.2s; position: relative; }
-        
-        /* 썸네일 스타일 */
-        .thumb { width: 100px; height: 56px; background: #333; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; border: 2px solid transparent; }
-        .item.active .thumb { border-color: var(--main-red); background: #222; color: var(--main-red); }
-        
-        .info .title { font-weight: bold; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-        /* PC 버전 레이아웃 (화면이 넓어질 때) */
-        @media (min-width: 768px) {
-            .container { flex-direction: row; }
-            .sidebar { width: 350px; height: 100vh; border-top: none; border-left: 1px solid #222; }
-            .list { flex-direction: column; overflow-x: hidden; overflow-y: auto; }
-            .item { min-width: auto; flex-direction: row; align-items: center; padding: 10px; }
-            .thumb { width: 60px; height: 90px; flex-shrink: 0; }
-            .info .title { white-space: normal; font-size: 14px; }
-        }
-    </style>
+.button-row { display:flex; justify-content:center; gap:35px; }
+.btn { width:50px; height:50px; border-radius:50%; background:rgba(255,255,255,.1); display:flex; align-items:center; justify-content:center; cursor:pointer; transition:transform .15s; }
+.btn:active { transform:scale(.9); }
+.btn svg { width:22px; height:22px; fill:white; }
+</style>
 </head>
 <body>
+<div id="app">
+  <div id="archive">
+    <div class="archive-title">숏폼 드라마 라이브러리</div>
+    <div class="grid" id="grid"></div>
+  </div>
 
-    <div class="container">
-        <div class="viewer">
-            <div id="auto-next-badge">잠시 후 다음 에피소드가 재생됩니다...</div>
-            <div class="video-box">
-                <iframe id="main-player" src="" allow="autoplay; fullscreen" allowfullscreen></iframe>
-            </div>
+  <div id="playerScreen">
+    <div class="back" onclick="goBack()">← Back</div>
+    <video id="player" playsinline></video>
+
+    <div class="controls">
+      <div class="time-display">
+        <span id="currentTime">0:00</span> / <span id="totalTime">0:00</span>
+      </div>
+      <input type="range" id="progress" value="0" min="0" max="100">
+      <div class="button-row">
+        <div id="minusBtn" class="btn">
+          <svg viewBox="0 0 24 24"><path d="M11 18V6l-8.5 6L11 18z"/><rect x="13" y="6" width="2" height="12"/></svg>
         </div>
-
-        <aside class="sidebar">
-            <div class="header">
-                <h1>투자자용 쇼케이스</h1>
-                <p>숏폼 드라마 [비밀의 숲] - 전체 에피소드</p>
-            </div>
-            <div class="list" id="epi-list">
-                </div>
-        </aside>
+        <div id="playBtn" class="btn">
+          <svg id="playIcon" viewBox="0 0 24 24"><polygon points="8,5 19,12 8,19"/></svg>
+          <svg id="pauseIcon" viewBox="0 0 24 24" style="display:none"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
+        </div>
+        <div id="plusBtn" class="btn">
+          <svg viewBox="0 0 24 24"><path d="M13 6v12l-8.5-6L13 6z"/><rect x="9" y="6" width="2" height="12"/></svg>
+        </div>
+      </div>
     </div>
+  </div>
+</div>
 
-    <script>
-        const LIBRARY_ID = "603895"; 
-        const episodes = [
-            { id: "6ec8e88e-b89f-4f6e-acb2-3fd9b588a959", title: "1화: 충격적인 오프닝" },
-            { id: "c60c1de4-a954-46ce-b2d3-79291627b9f1", title: "2화: 엇갈린 선택" },
-            { id: "fb60b9b0-5cd3-4578-bf35-bbc6aef607db", title: "3화: 밝혀지는 진실" }
-        ];
+<script>
+const pullZoneUrl = "https://vz-af7f48b7-cd1.b-cdn.net"; // Bunny.net 스트림 기본 URL
+const videos = [
+  "6ec8e88e-b89f-4f6e-acb2-3fd9b588a959",
+  "c60c1de4-a954-46ce-b2d3-79291627b9f1",
+  "fb60b9b0-5cd3-4578-bf35-bbc6aef607db"
+];
+const posters = [
+  "https://antiscar-poster.b-cdn.net/poster01.jpeg",
+  "https://antiscar-poster.b-cdn.net/poster02.jpeg",
+  "https://antiscar-poster.b-cdn.net/poster03.jpeg"
+];
 
-        let currentIdx = 0;
-        const playerIframe = document.getElementById('main-player');
-        const listDiv = document.getElementById('epi-list');
-        const badge = document.getElementById('auto-next-badge');
+const grid = document.getElementById("grid");
+const player = document.getElementById("player");
+const playIcon = document.getElementById("playIcon");
+const pauseIcon = document.getElementById("pauseIcon");
+const controls = document.querySelector(".controls");
+const progress = document.getElementById("progress");
+const currentTimeEl = document.getElementById("currentTime");
+const totalTimeEl = document.getElementById("totalTime");
 
-        function playVideo(index) {
-            if (index >= episodes.length) return; // 마지막 화면 멈춤
-            
-            currentIdx = index;
-            const video = episodes[index];
-            
-            // Bunny.net URL 설정 (autoplay=true 필수)
-            playerIframe.src = `https://iframe.mediadelivery.net/embed/${LIBRARY_ID}/${video.id}?autoplay=true`;
-            
-            updateListUI(index);
-            attachPlayerEvents(); // 영상 종료 감지 시작
-        }
+let currentIndex = 0, hideTimer, controlsVisible = false;
+let hls;
 
-        // 영상이 끝나는지 감지하는 함수
-        function attachPlayerEvents() {
-            const player = new playerjs.Player(playerIframe);
-            
-            player.on('ready', () => {
-                player.play(); // 준비되면 바로 재생
-            });
+// 카드 생성
+videos.forEach((v,i)=>{
+  const card = document.createElement("div");
+  card.className = "card";
+  card.style.backgroundImage = `url(${posters[i]})`;
+  card.onclick = () => startVideo(i);
+  grid.appendChild(card);
+});
 
-            player.on('ended
+// 영상 시작
+function startVideo(index){
+  currentIndex = index;
+  document.getElementById("archive").style.display="none";
+  document.getElementById("playerScreen").style.display="block";
+
+  const url = `${pullZoneUrl}/${videos[currentIndex]}/playlist.m3u8`;
+
+  if(Hls.isSupported()){
+    if(hls){ hls.destroy(); }
+    hls = new Hls();
+    hls.loadSource(url);
+    hls.attachMedia(player);
+    hls.on(Hls.Events.MANIFEST_PARSED, ()=>player.play());
+  } else if(player.canPlayType('application/vnd.apple.mpegurl')){
+    player.src = url;
+    player.play();
+  }
+
+  showControls();
+}
+
+// 뒤로가기
+function goBack(){
+  player.pause();
+  document.getElementById("playerScreen").style.display="none";
+  document.getElementById("archive").style.display="block";
+  controlsVisible=false;
+}
+
+// 화면 터치 = 컨트롤 토글
+player.addEventListener("click",()=>{
+  if(!controlsVisible){ showControls(); controlsVisible=true; }
+  else togglePlay();
+});
+
+// 버튼
+document.getElementById("playBtn").onclick = togglePlay;
+document.getElementById("minusBtn").onclick = ()=>{ player.currentTime=Math.max(0,player.currentTime-10); showControls(); };
+document.getElementById("plusBtn").onclick = ()=>{ player.currentTime=Math.min(player.duration,player.currentTime+10); showControls(); };
+
+function togglePlay(){
+  if(player.paused) player.play();
+  else player.pause();
+  showControls();
+}
+
+// 아이콘 전환
+player.addEventListener("play",()=>{ playIcon.style.display="none"; pauseIcon.style.display="block"; });
+player.addEventListener("pause",()=>{ playIcon.style.display="block"; pauseIcon.style.display="none"; });
+
+// 시간/진행바
+player.addEventListener("loadedmetadata",()=>{ totalTimeEl.textContent = formatTime(player.duration); });
+player.addEventListener("timeupdate",()=>{
+  if(player.duration){
+    progress.value = (player.currentTime/player.duration)*100;
+    currentTimeEl.textContent = formatTime(player.currentTime);
+  }
+});
+progress.oninput = ()=>{ if(player.duration){ player.currentTime=(progress.value/100)*player.duration; showControls(); } };
+function formatTime(sec){ const m=Math.floor(sec/60), s=Math.floor(sec%60); return `${m}:${s<10?'0'+s:s}`; }
+
+// 연속재생
+player.addEventListener("ended",()=>{
+  if(currentIndex < videos.length-1) startVideo(currentIndex+1);
+  else goBack();
+});
+
+// 컨트롤 표시/숨김
+function showControls(){
+  controls.classList.remove("hide");
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(()=>controls.classList.add("hide"), 3000);
+}
+
+window.addEventListener('load', ()=>{ setTimeout(()=>window.scrollTo(0,1),100); });
+</script>
+</body>
+</html>
